@@ -82,6 +82,7 @@ python3 -m http.server 8080
 | Problem | Likely cause and fix |
 |---|---|
 | App stays on a blank or loading screen | Check the browser console. Wrong `.wasm` MIME types and failed asset loads are the most common causes. |
+| Blank page on `localhost` (React Refresh error in console) | Edit `environment.js` and set `window.__DEV__ = false`  |
 | Works on `localhost` but not when deployed | The site must be served over HTTPS. |
 | Old version still shows after an update | The service worker cache is still serving it. Do a hard refresh or close all tabs of the app, and make sure `index.html` and the service worker file are not cached long-term. |
 | Very slow start in Firefox | This is a known limitation of Joplin Web in Firefox. Use Chrome or Safari. |
