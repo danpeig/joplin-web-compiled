@@ -1,0 +1,118 @@
+name: Build Joplin Web release zip
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Joplin branch to build (leave empty for the latest release-X.Y branch)'
+        required: false
+        default: ''
+      publish_release:
+        description: 'Also publish the zip as a GitHub Release in this repo'
+        type: boolean
+        default: true
+
+# contents: write is only needed to create the GitHub Release
+permissions:
+  contents: write
+
+concurrency:
+  group: joplin-web-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Joplin source
+        uses: actions/checkout@v7
+        with:
+          repository: 'laurent22/joplin'
+          ref: dev
+
+      - name: Fetch all branches
+        # actions/checkout only fetches the current branch:
+        run: git fetch --depth=1
+
+      - name: Checkout release branch
+        id: branch
+        run: |
+          if [[ -n "${{ inputs.branch }}" ]]; then
+            TARGET="${{ inputs.branch }}"
+          else
+            ALL_BRANCHES="$(git for-each-ref --format '%(refname:short)' 'refs/remotes/origin/*' | sed 's;origin/;;')"
+            RELEASE_BRANCHES="$(echo "$ALL_BRANCHES" | grep -P '^release-[0-9]+\.[0-9]+$' || true)"
+            echo "Found release branches: $RELEASE_BRANCHES"
+
+            TARGET="release-$(echo "$RELEASE_BRANCHES" \
+                | sed 's/^release-//' \
+                | sort --version-sort \
+                | tail -n1)"
+            if [[ "$TARGET" = "release-" ]]; then
+              echo "No release branches found."
+              exit 2
+            fi
+          fi
+
+          echo "Switching to branch: $TARGET"
+          git checkout "$TARGET"
+          echo "name=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Read app version
+        id: version
+        run: |
+          VERSION="$(node -p "require('./packages/app-mobile/package.json').version")"
+          SHA="$(git rev-parse --short HEAD)"
+          echo "Joplin mobile/web version: $VERSION ($SHA)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "zip=joplin-web-$VERSION.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare yarn
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build web app
+        run: cd packages/app-mobile/ && yarn web
+
+      - name: Create release zip
+        run: |
+          DIST=packages/app-mobile/web/dist
+          test -f "$DIST/index.html" || { echo "Build output missing index.html"; exit 1; }
+          # Zip the contents (not the folder) so it extracts straight into the web root
+          (cd "$DIST" && zip -r -9 -q "$GITHUB_WORKSPACE/${{ steps.version.outputs.zip }}" .)
+          sha256sum "${{ steps.version.outputs.zip }}" > "${{ steps.version.outputs.zip }}.sha256"
+          ls -lh "${{ steps.version.outputs.zip }}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: joplin-web-${{ steps.version.outputs.version }}
+          path: |
+            ${{ steps.version.outputs.zip }}
+            ${{ steps.version.outputs.zip }}.sha256
+          # Already compressed, don't zip it twice
+          compression-level: 0
+
+      - name: Publish GitHub Release
+        if: ${{ inputs.publish_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: web-v${{ steps.version.outputs.version }}
+        run: |
+          NOTES="Joplin Web ${{ steps.version.outputs.version }} built from laurent22/joplin@${{ steps.version.outputs.sha }} (branch ${{ steps.branch.outputs.name }}).
+
+          Extract the zip into the document root of any static web server (HTTPS required for the service worker/PWA, except on localhost)."
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG exists, replacing assets"
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+              "${{ steps.version.outputs.zip }}" "${{ steps.version.outputs.zip }}.sha256"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Joplin Web ${{ steps.version.outputs.version }}" \
+              --notes "$NOTES" \
+              "${{ steps.version.outputs.zip }}" "${{ steps.version.outputs.zip }}.sha256"
+          fi
