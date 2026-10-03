@@ -3,12 +3,12 @@ name: Build Joplin Web release zip
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: 'Joplin branch to build (leave empty for the latest release-X.Y branch)'
+      version:
+        description: 'Joplin version or ref to build, e.g. 3.7.21, v3.7.21 or a branch such as release-3.7. Leave empty for the latest stable vX.Y.Z tag.'
         required: false
         default: ''
       publish_release:
-        description: 'Also publish the zip as a GitHub Release in this repo'
+        description: 'Also publish the zip as a GitHub Release in this repository'
         type: boolean
         default: true
 
@@ -20,53 +20,79 @@ concurrency:
   group: joplin-web-build
   cancel-in-progress: true
 
+env:
+  JOPLIN_REPO: laurent22/joplin
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve Joplin ref
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          REQUESTED="$(echo "$INPUT_VERSION" | xargs)"   # trim whitespace
+
+          if [[ -z "$REQUESTED" ]]; then
+            # Latest stable tag: vX.Y.Z only (no betas, no android-/ios-/server- prefixes)
+            REF="$(git ls-remote --tags --refs "https://github.com/$JOPLIN_REPO.git" 'v*' \
+              | sed 's;.*refs/tags/;;' \
+              | grep -P '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort --version-sort \
+              | tail -n1)"
+            if [[ -z "$REF" ]]; then
+              echo "::error::No stable vX.Y.Z tags found in $JOPLIN_REPO"
+              exit 2
+            fi
+            KIND=tag
+          elif [[ "$REQUESTED" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            REF="v${REQUESTED#v}"
+            KIND=tag
+          else
+            REF="$REQUESTED"
+            KIND=other
+          fi
+
+          # Fail early with a clear message if the ref doesn't exist
+          if [[ "$KIND" = "tag" ]]; then
+            git ls-remote --exit-code --tags --refs "https://github.com/$JOPLIN_REPO.git" "refs/tags/$REF" >/dev/null \
+              || { echo "::error::Tag $REF not found in $JOPLIN_REPO"; exit 2; }
+          else
+            git ls-remote --exit-code "https://github.com/$JOPLIN_REPO.git" "$REF" "refs/heads/$REF" "refs/tags/$REF" >/dev/null \
+              || { echo "::error::Ref $REF not found in $JOPLIN_REPO"; exit 2; }
+          fi
+
+          echo "Building Joplin ref: $REF ($KIND)"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "kind=$KIND" >> "$GITHUB_OUTPUT"
+
       - name: Checkout Joplin source
         uses: actions/checkout@v7
         with:
-          repository: 'laurent22/joplin'
-          ref: dev
+          repository: ${{ env.JOPLIN_REPO }}
+          ref: ${{ steps.resolve.outputs.ref }}
 
-      - name: Fetch all branches
-        # actions/checkout only fetches the current branch:
-        run: git fetch --depth=1
-
-      - name: Checkout release branch
-        id: branch
+      - name: Compute names
+        id: names
+        env:
+          REF: ${{ steps.resolve.outputs.ref }}
+          KIND: ${{ steps.resolve.outputs.kind }}
         run: |
-          if [[ -n "${{ inputs.branch }}" ]]; then
-            TARGET="${{ inputs.branch }}"
-          else
-            ALL_BRANCHES="$(git for-each-ref --format '%(refname:short)' 'refs/remotes/origin/*' | sed 's;origin/;;')"
-            RELEASE_BRANCHES="$(echo "$ALL_BRANCHES" | grep -P '^release-[0-9]+\.[0-9]+$' || true)"
-            echo "Found release branches: $RELEASE_BRANCHES"
-
-            TARGET="release-$(echo "$RELEASE_BRANCHES" \
-                | sed 's/^release-//' \
-                | sort --version-sort \
-                | tail -n1)"
-            if [[ "$TARGET" = "release-" ]]; then
-              echo "No release branches found."
-              exit 2
-            fi
-          fi
-
-          echo "Switching to branch: $TARGET"
-          git checkout "$TARGET"
-          echo "name=$TARGET" >> "$GITHUB_OUTPUT"
-
-      - name: Read app version
-        id: version
-        run: |
-          VERSION="$(node -p "require('./packages/app-mobile/package.json').version")"
           SHA="$(git rev-parse --short HEAD)"
-          echo "Joplin mobile/web version: $VERSION ($SHA)"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$KIND" = "tag" ]]; then
+            LABEL="${REF#v}"                         # 3.7.21
+            RELEASE_TAG="web-v$LABEL"
+          else
+            LABEL="${REF//\//-}-$SHA"                # release-3.7-abc1234
+            RELEASE_TAG="web-$LABEL"
+          fi
+          echo "Label: $LABEL (commit $SHA)"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "zip=joplin-web-$VERSION.zip" >> "$GITHUB_OUTPUT"
+          echo "label=$LABEL" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "zip=joplin-web-$LABEL.zip" >> "$GITHUB_OUTPUT"
 
       - name: Prepare yarn
         run: corepack enable
@@ -82,17 +108,17 @@ jobs:
           DIST=packages/app-mobile/web/dist
           test -f "$DIST/index.html" || { echo "Build output missing index.html"; exit 1; }
           # Zip the contents (not the folder) so it extracts straight into the web root
-          (cd "$DIST" && zip -r -9 -q "$GITHUB_WORKSPACE/${{ steps.version.outputs.zip }}" .)
-          sha256sum "${{ steps.version.outputs.zip }}" > "${{ steps.version.outputs.zip }}.sha256"
-          ls -lh "${{ steps.version.outputs.zip }}"
+          (cd "$DIST" && zip -r -9 -q "$GITHUB_WORKSPACE/${{ steps.names.outputs.zip }}" .)
+          sha256sum "${{ steps.names.outputs.zip }}" > "${{ steps.names.outputs.zip }}.sha256"
+          ls -lh "${{ steps.names.outputs.zip }}"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: joplin-web-${{ steps.version.outputs.version }}
+          name: joplin-web-${{ steps.names.outputs.label }}
           path: |
-            ${{ steps.version.outputs.zip }}
-            ${{ steps.version.outputs.zip }}.sha256
+            ${{ steps.names.outputs.zip }}
+            ${{ steps.names.outputs.zip }}.sha256
           # Already compressed, don't zip it twice
           compression-level: 0
 
@@ -100,19 +126,22 @@ jobs:
         if: ${{ inputs.publish_release }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: web-v${{ steps.version.outputs.version }}
+          TAG: ${{ steps.names.outputs.release_tag }}
+          ZIP: ${{ steps.names.outputs.zip }}
+          LABEL: ${{ steps.names.outputs.label }}
+          REF: ${{ steps.resolve.outputs.ref }}
+          SHA: ${{ steps.names.outputs.sha }}
         run: |
-          NOTES="Joplin Web ${{ steps.version.outputs.version }} built from laurent22/joplin@${{ steps.version.outputs.sha }} (branch ${{ steps.branch.outputs.name }}).
+          NOTES="Joplin Web $LABEL, built from $JOPLIN_REPO at \`$REF\` (commit $SHA).
 
           Extract the zip into the document root of any static web server (HTTPS required for the service worker/PWA, except on localhost)."
 
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG exists, replacing assets"
-            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-              "${{ steps.version.outputs.zip }}" "${{ steps.version.outputs.zip }}.sha256"
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "$ZIP" "$ZIP.sha256"
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "Joplin Web ${{ steps.version.outputs.version }}" \
+              --title "Joplin Web $LABEL" \
               --notes "$NOTES" \
-              "${{ steps.version.outputs.zip }}" "${{ steps.version.outputs.zip }}.sha256"
+              "$ZIP" "$ZIP.sha256"
           fi
