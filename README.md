@@ -4,8 +4,6 @@ This repository builds the [Joplin](https://joplinapp.org/) web app with a GitHu
 
 The build steps are the same ones the official [joplin/web-app](https://github.com/joplin/web-app) repository uses to deploy <https://app.joplincloud.com/>. The difference is that this workflow does not deploy to GitHub Pages. It produces a downloadable release archive instead.
 
-> Joplin Web is Joplin Mobile running in a browser. It is local-first: notes are stored in the browser and can optionally be synced to any supported sync target (Joplin Server, Joplin Cloud, Nextcloud/WebDAV, etc.).
-
 ---
 ## Requirements to host
 
