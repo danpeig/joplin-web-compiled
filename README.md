@@ -5,7 +5,7 @@ This repository builds the [Joplin](https://joplinapp.org/) web app with a GitHu
 The build steps are the same ones the official [joplin/web-app](https://github.com/joplin/web-app) repository uses to deploy <https://app.joplincloud.com/>. The difference is that this workflow does not deploy to GitHub Pages. It produces a downloadable release archive instead.
 
 ## Download the compiled packages
-- [Releases page](https://github.com/octo-org/octo-repo/releases/)
+- [Releases page](https://github.com/danpeig/joplin-web-compiled/releases/)
 
 ## Requirements to host
 
