@@ -1,6 +1,10 @@
 name: Build Joplin Web release zip
 
 on:
+  # Joplin's repository can't trigger this one, so poll for new tags instead.
+  # Scheduled runs only build when there is no release for the newest tag yet.
+  schedule:
+    - cron: '0 9 * * *'
   workflow_dispatch:
     inputs:
       version:
@@ -16,21 +20,65 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: joplin-web-build
-  cancel-in-progress: true
-
 env:
   JOPLIN_REPO: laurent22/joplin
 
 jobs:
-  build:
+  check:
+    # Decides whether a build is needed. Manual runs always build.
     runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - name: Decide whether to build
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" != "schedule" ]]; then
+            echo "Manual run: building (version input: '${INPUT_VERSION:-latest}')"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LATEST="$(git ls-remote --tags --refs "https://github.com/$JOPLIN_REPO.git" 'v*' \
+            | sed 's;.*refs/tags/;;' \
+            | grep -P '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort --version-sort \
+            | tail -n1)"
+          if [[ -z "$LATEST" ]]; then
+            echo "::error::No stable vX.Y.Z tags found in $JOPLIN_REPO"
+            exit 2
+          fi
+
+          echo "Latest Joplin tag: $LATEST"
+          if gh release view "web-$LATEST" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release web-$LATEST already exists, nothing to do."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No release for $LATEST yet, building."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: ${{ needs.check.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    # Don't cancel a build that is already running when a scheduled run starts
+    concurrency:
+      group: joplin-web-build
+      cancel-in-progress: false
     steps:
       - name: Resolve Joplin ref
         id: resolve
         env:
-          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_VERSION: ${{ needs.check.outputs.version }}
         run: |
           set -euo pipefail
           REQUESTED="$(echo "$INPUT_VERSION" | xargs)"   # trim whitespace
@@ -123,7 +171,8 @@ jobs:
           compression-level: 0
 
       - name: Publish GitHub Release
-        if: ${{ inputs.publish_release }}
+        # inputs.* is empty on scheduled runs, so publish there explicitly
+        if: ${{ github.event_name == 'schedule' || inputs.publish_release }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.names.outputs.release_tag }}
