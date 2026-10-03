@@ -1,6 +1,6 @@
-# Joplin Web – compiled static releases
+# Joplin Web: compiled static releases
 
-This repository builds the [Joplin](https://joplinapp.org/) web app with a GitHub Actions workflow and packages the compiled files as a zip. You can extract the zip on any static web server and self-host it.
+This repository builds the [Joplin](https://joplinapp.org/) web app with a GitHub Actions workflow and packages the compiled files as a zip. You can extract the zip on any static web server and self-host it anywhere.
 
 The build steps are the same ones the official [joplin/web-app](https://github.com/joplin/web-app) repository uses to deploy <https://app.joplincloud.com/>. The difference is that this workflow does not deploy to GitHub Pages. It produces a downloadable release archive instead.
 
