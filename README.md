@@ -1,4 +1,4 @@
-# Joplin Web – Static Release Builder
+# Joplin Web – Compiled static releases
 
 This repository builds the [Joplin](https://joplinapp.org/) web app with a GitHub Actions workflow and packages the compiled files as a zip. You can extract the zip on any static web server and self-host it.
 
