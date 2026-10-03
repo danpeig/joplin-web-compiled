@@ -1,10 +1,9 @@
 name: Build Joplin Web release zip
 
 on:
-  # Joplin's repository can't trigger this one, so poll for new tags instead.
   # Scheduled runs only build when there is no release for the newest tag yet.
   schedule:
-    - cron: '0 9 * * *'
+    - cron: '9 9 * * *'
   workflow_dispatch:
     inputs:
       version:
