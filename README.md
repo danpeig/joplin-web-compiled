@@ -25,7 +25,7 @@ The build steps are the same ones the official [joplin/web-app](https://github.c
 | Works on `localhost` but not when deployed | The site must be served over HTTPS. |
 | Old version still shows after an update | The service worker cache is still serving it. Do a hard refresh or close all tabs of the app, and make sure `index.html` and the service worker file are not cached long-term. |
 | Remote sync problems | Joplin Cloud refuses connections from other web apps rather than their own. Others are typically related to CORS, the simplest solution is hosting the web app in the same server |
-| The package hosted in this repository is too old | I need to run build the script manually, open an [issue](https://github.com/danpeig/joplin-web-compiled/issues)|
+| The package hosted in this repository is too old | I need to run build the script manually, open an [issue](https://github.com/danpeig/joplin-web-compiled/issues) so I remember or clone the repository and run the script yourself|
 
 ## License
 
