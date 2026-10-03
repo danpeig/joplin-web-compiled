@@ -4,7 +4,9 @@ This repository builds the [Joplin](https://joplinapp.org/) web app with a GitHu
 
 The build steps are the same ones the official [joplin/web-app](https://github.com/joplin/web-app) repository uses to deploy <https://app.joplincloud.com/>. The difference is that this workflow does not deploy to GitHub Pages. It produces a downloadable release archive instead.
 
----
+## Download the compiled packages
+- [Releases page](https://github.com/octo-org/octo-repo/releases/)
+
 ## Requirements to host
 
 | Requirement | Notes |
@@ -75,7 +77,6 @@ cd /var/www/joplin
 python3 -m http.server 8080
 # open http://localhost:8080
 ```
-
 ## Troubleshooting
 
 | Problem | Likely cause and fix |
@@ -84,8 +85,6 @@ python3 -m http.server 8080
 | Works on `localhost` but not when deployed | The site must be served over HTTPS. |
 | Old version still shows after an update | The service worker cache is still serving it. Do a hard refresh or close all tabs of the app, and make sure `index.html` and the service worker file are not cached long-term. |
 | Very slow start in Firefox | This is a known limitation of Joplin Web in Firefox. Use Chrome or Safari. |
-
----
 
 ## License
 
