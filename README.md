@@ -24,7 +24,7 @@ The build steps are the same ones the official [joplin/web-app](https://github.c
 | Blank page on `localhost` (React Refresh error in console) | Edit `environment.js` and set `window.__DEV__ = false`  |
 | Works on `localhost` but not when deployed | The site must be served over HTTPS. |
 | Old version still shows after an update | The service worker cache is still serving it. Do a hard refresh or close all tabs of the app, and make sure `index.html` and the service worker file are not cached long-term. |
-| Remote sync problems | Joplin Cloud refuses connections from other web apps rather than their own. Others are typically related to CORS, the simplest solution is hosting the web app in the same server |
+| Remote sync problems | Joplin Cloud refuses connections from other web apps rather than their own. Others are typically related to CORS, the simplest solution is changing the server configurations to allow connections from a specific host: https://github.com/laurent22/joplin/pull/16760 |
 | The package hosted in this repository is too old | The build script is programmed to run once per day. Open an [issue](https://github.com/danpeig/joplin-web-compiled/issues) if it is failing to build the latest versions.|
 
 ## License
